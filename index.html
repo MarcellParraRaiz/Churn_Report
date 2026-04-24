@@ -1521,6 +1521,8 @@ function goToSlide(idx) {
   renderCurrentSlide();
 }
 
+const SLIDES_NO_FILTER = new Set([0, 9]);
+
 function updateUI() {
   const total = 10;
   document.getElementById('slide-counter').textContent =
@@ -1533,10 +1535,25 @@ function updateUI() {
   document.querySelectorAll('.nav-dot').forEach((d, i) => {
     d.classList.toggle('active', i === currentSlide);
   });
+
+  // Desabilitar filtros em páginas onde não fazem sentido
+  const noFilter = SLIDES_NO_FILTER.has(currentSlide);
+  const btnFilters = document.getElementById('btn-filters');
+  const filtersEl  = document.getElementById('filters');
+  btnFilters.disabled = noFilter;
+  btnFilters.style.opacity = noFilter ? '0.3' : '';
+  btnFilters.title = noFilter ? 'Filtros indisponíveis nesta página' : 'Filtros (Esc)';
+  if (noFilter) {
+    filtersEl.classList.add('hidden');
+  } else {
+    filtersEl.classList.toggle('hidden', !filtersVisible);
+    btnFilters.classList.toggle('active', filtersVisible);
+  }
 }
 
 // ─── FILTERS ─────────────────────────────────────────────────────────────
 function toggleFilters() {
+  if (SLIDES_NO_FILTER.has(currentSlide)) return;
   filtersVisible = !filtersVisible;
   document.getElementById('filters').classList.toggle('hidden', !filtersVisible);
   document.getElementById('btn-filters').classList.toggle('active', filtersVisible);
@@ -1877,15 +1894,17 @@ function renderSlide6() {
   const p2025 = keys.map(k => DATA.profMonthly2025[k] || 0);
   const p2026 = keys.map(k => DATA.profMonthly2026[k] || 0);
 
+  // Aplicar filtro de período
+  const datasets6 = [];
+  if (filters.period !== '2026') datasets6.push({ label: '2025', data: p2025, backgroundColor: 'rgba(45,212,191,0.6)', borderColor: C.teal, borderWidth: 1, borderRadius: 4 });
+  if (filters.period !== '2025') datasets6.push({ label: '2026', data: p2026, backgroundColor: 'rgba(244,63,94,0.65)', borderColor: C.rose, borderWidth: 1, borderRadius: 4 });
+
   const ctx1 = document.getElementById('chart-prof-monthly').getContext('2d');
   charts['prof-monthly'] = new Chart(ctx1, {
     type: 'bar',
     data: {
       labels: months,
-      datasets: [
-        { label: '2025', data: p2025, backgroundColor: 'rgba(45,212,191,0.6)', borderColor: C.teal, borderWidth: 1, borderRadius: 4 },
-        { label: '2026', data: p2026, backgroundColor: 'rgba(244,63,94,0.65)', borderColor: C.rose, borderWidth: 1, borderRadius: 4 }
-      ]
+      datasets: datasets6
     },
     options: {
       ...chartDefaults,
@@ -2072,8 +2091,11 @@ function renderSlide9() {
   });
   html += '</div>';
   // data rows
+  const marcaKey9 = normMarca(filters.marca);
   marcas.forEach(m => {
-    html += '<div class="hm-row">';
+    const isDimmed = marcaKey9 !== 'todas' && m !== marcaKey9;
+    const rowStyle = isDimmed ? 'opacity:0.25' : (marcaKey9 !== 'todas' ? 'outline:1px solid rgba(99,102,241,0.6);border-radius:2px' : '');
+    html += `<div class="hm-row" style="${rowStyle}">`;
     html += `<div class="hm-label" title="${m}">${shortName(m)}</div>`;
     meses.forEach((k, ki) => {
       const v = DATA.marcaMonthly2026[m][k] || 0;
