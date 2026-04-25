@@ -1591,46 +1591,54 @@ function normMarca(raw) {
 }
 
 function renderSlide2() {
-  // ── Resolve KPI values based on active marca filter ──────────────────
-  const marcaKey = normMarca(filters.marca);
-  const isMarca  = marcaKey !== 'todas';
+  // ── Resolve filtros ativos ────────────────────────────────────────────
+  const marcaKey    = normMarca(filters.marca);
+  const isMarca     = marcaKey !== 'todas';
+  const isProfOnly  = filters.profOnly || filters.cargo === 'professores';
+  const isExclDocEst = !isProfOnly && filters.cargo === 'excl_doc_est';
 
-  // Jan–Apr CAGED totals (include transfers); CONSOLIDADO excludes them
-  const CAGED_JAN_APR_25 = 1028; // 116+445+297+170
-  const CAGED_JAN_APR_26 = 1085; // 163+569+219+134
+  // Totais Jan–Abr por fonte
+  const CAGED_JAN_APR_25  = 1028;
+  const CAGED_JAN_APR_26  = 1085;
   const CONSOL_JAN_APR_25 = 852;
   const CONSOL_JAN_APR_26 = 881;
 
+  // Totais de professores Jan–Abr (calculados a partir dos dados mensais)
+  const keys4 = ['01','02','03','04'];
+  const PROF_JAN_APR_25 = keys4.reduce((s,k) => s + (DATA.profMonthly2025[k]||0), 0); // 399
+  const PROF_JAN_APR_26 = keys4.reduce((s,k) => s + (DATA.profMonthly2026[k]||0), 0); // 430
+
   let total25, total26, pct25, pct26, card4Label, card4Value, card4Delta;
 
-  if (isMarca && DATA.brands2026[marcaKey]) {
-    // Brand-level data comes from CONSOLIDADO (already excl. transfers)
-    const b25 = DATA.brands2025[marcaKey] || {};
-    const b26 = DATA.brands2026[marcaKey];
-    total25 = b25.total || 0;
-    total26 = b26.total || 0;
-    pct25   = b25.pct   || 0;
-    pct26   = b26.pct   || 0;
-
+  if (isProfOnly) {
+    total25    = PROF_JAN_APR_25;
+    total26    = PROF_JAN_APR_26;
+    pct25      = 32.9; // taxa voluntária professores — sem split anual disponível
+    pct26      = 32.9;
+    card4Label = 'Professores Acumulado';
+    card4Value = '1.014';
+    card4Delta = 'Jan/2025–Abr/2026';
+  } else if (isMarca && DATA.brands2026[marcaKey]) {
+    const b25  = DATA.brands2025[marcaKey] || {};
+    const b26  = DATA.brands2026[marcaKey];
+    total25    = b25.total || 0;
+    total26    = b26.total || 0;
+    pct25      = b25.pct   || 0;
+    pct26      = b26.pct   || 0;
     const ranking = DATA.marcaRanking.find(r => r[0] === marcaKey);
     card4Label = 'Total Geral (CAGED)';
     card4Value = (ranking ? ranking[1] : total25 + total26).toLocaleString('pt-BR');
     card4Delta = 'Jan/2025–Abr/2026';
-  } else if (filters.cargo === 'excl_doc_est') {
-    // Staff only: excl. professors (interns monthly not isolated, see note)
-    // Jan-Apr staff: 629 (2025) / 655 (2026) — total excl. prof monthly
-    total25 = 629; total26 = 655;
-    // Voluntary rate for non-prof: (804 vol total - 322 prof vol) / (3286 - 1014) ≈ 21.2%
-    // For non-prof Jan-Apr, approximated similarly
-    pct25 = 21.2; pct26 = 22.5;
+  } else if (isExclDocEst) {
+    total25    = 629; total26 = 655;
+    pct25      = 21.2; pct26  = 22.5;
     card4Label = 'Total Excl. Docentes';
-    card4Value = (2272).toLocaleString('pt-BR');  // 3286 - 1014 prof
+    card4Value = (2272).toLocaleString('pt-BR');
     card4Delta = 'Jan/2025–Abr/2026 (CAGED)';
   } else {
-    // Global totals: toggle between excl/incl transfers
-    total25 = filters.exclTransf ? CONSOL_JAN_APR_25 : CAGED_JAN_APR_25;
-    total26 = filters.exclTransf ? CONSOL_JAN_APR_26 : CAGED_JAN_APR_26;
-    pct25 = 26.1; pct26 = 26.8; // voluntary rate unchanged (CONSOLIDADO only)
+    total25    = filters.exclTransf ? CONSOL_JAN_APR_25 : CAGED_JAN_APR_25;
+    total26    = filters.exclTransf ? CONSOL_JAN_APR_26 : CAGED_JAN_APR_26;
+    pct25      = 26.1; pct26 = 26.8;
     card4Label = 'Professores Desligs.';
     card4Value = '1.014';
     card4Delta = '30,9% do total geral';
@@ -1639,56 +1647,75 @@ function renderSlide2() {
   const yoyRaw = total25 > 0 ? ((total26 - total25) / total25 * 100) : 0;
   const yoyStr = (yoyRaw >= 0 ? '+' : '') + yoyRaw.toFixed(1).replace('.', ',') + '% vs 2025';
   const yoyUp  = yoyRaw >= 0;
-  const pctUp  = pct26 >= pct25;
 
-  // ── Update KPI card DOM ──────────────────────────────────────────────
+  // Filtro de período → Card 3 mostra taxa do ano selecionado
+  const showYear = filters.period === '2025' ? '2025' : '2026';
+  const showPct  = filters.period === '2025' ? pct25 : pct26;
+  const cmpPct   = filters.period === '2025' ? pct26 : pct25;
+  const cmpYear  = filters.period === '2025' ? '2026' : '2025';
+  const pctUp    = showPct >= cmpPct;
+
+  // ── Atualiza KPI cards ────────────────────────────────────────────────
   const kpis = document.querySelectorAll('#slide-2 .kpi-card');
   if (kpis.length >= 4) {
-    // Card 1 — Total 2025
-    kpis[0].querySelector('.kpi-label').textContent = isMarca ? marcaKey + ' — 2025 (Jan–Abr)' : 'Total 2025 (Jan–Abr)';
+    const prefix = isProfOnly ? 'Prof. ' : (isMarca ? marcaKey + ' — ' : '');
+
+    kpis[0].querySelector('.kpi-label').textContent = prefix + 'Total 2025 (Jan–Abr)';
     kpis[0].querySelector('.kpi-value').textContent = total25.toLocaleString('pt-BR');
     kpis[0].querySelector('.kpi-delta').textContent = 'desligamentos';
-    kpis[0].querySelector('.kpi-delta').className = 'kpi-delta';
+    kpis[0].querySelector('.kpi-delta').className   = 'kpi-delta';
 
-    // Card 2 — Total 2026
-    kpis[1].querySelector('.kpi-label').textContent = isMarca ? marcaKey + ' — 2026 (Jan–Abr)' : 'Total 2026 (Jan–Abr)';
+    kpis[1].querySelector('.kpi-label').textContent = prefix + 'Total 2026 (Jan–Abr)';
     kpis[1].querySelector('.kpi-value').textContent = total26.toLocaleString('pt-BR');
     kpis[1].querySelector('.kpi-delta').textContent = yoyStr;
-    kpis[1].querySelector('.kpi-delta').className = 'kpi-delta ' + (yoyUp ? 'delta-up' : 'delta-down');
+    kpis[1].querySelector('.kpi-delta').className   = 'kpi-delta ' + (yoyUp ? 'delta-up' : 'delta-down');
 
-    // Card 3 — Taxa Voluntária 2026
-    kpis[2].querySelector('.kpi-label').textContent = 'Taxa Voluntária 2026';
-    kpis[2].querySelector('.kpi-value').textContent = pct26.toFixed(1).replace('.', ',') + '%';
-    kpis[2].querySelector('.kpi-delta').textContent = (pctUp ? '↑' : '↓') + ' vs ' + pct25.toFixed(1).replace('.', ',') + '% em 2025';
-    kpis[2].querySelector('.kpi-delta').className = 'kpi-delta ' + (pctUp ? 'delta-up' : 'delta-down');
+    kpis[2].querySelector('.kpi-label').textContent = `Taxa Voluntária ${showYear}`;
+    kpis[2].querySelector('.kpi-value').textContent = showPct.toFixed(1).replace('.', ',') + '%';
+    kpis[2].querySelector('.kpi-delta').textContent = (pctUp ? '↑' : '↓') + ' vs ' + cmpPct.toFixed(1).replace('.', ',') + '% em ' + cmpYear;
+    kpis[2].querySelector('.kpi-delta').className   = 'kpi-delta ' + (pctUp ? 'delta-up' : 'delta-down');
 
-    // Card 4 — context-dependent
     kpis[3].querySelector('.kpi-label').textContent = card4Label;
     kpis[3].querySelector('.kpi-value').textContent = card4Value;
     kpis[3].querySelector('.kpi-delta').textContent = card4Delta;
-    kpis[3].querySelector('.kpi-delta').className = 'kpi-delta';
+    kpis[3].querySelector('.kpi-delta').className   = 'kpi-delta';
   }
 
-  // ── Update slide 2 subtitle to reflect active filters ────────────────
+  // ── Atualiza subtítulo ────────────────────────────────────────────────
   const sub2 = document.querySelector('#slide-2 .slide-subtitle');
   if (sub2) {
     const parts = ['Jan–Abr', 'comparativo YoY'];
-    if (isMarca) parts.push(marcaKey);
+    if (isMarca)      parts.push(marcaKey);
+    if (isProfOnly)   parts.push('apenas professores');
+    if (isExclDocEst) parts.push('excl. docentes e estagiários');
+    if (filters.period !== 'ambos') parts.push(filters.period);
     if (!filters.exclTransf) parts.push('incl. transferências');
     sub2.textContent = 'KPIs e distribuição por tipo de desligamento — ' + parts.join(' · ');
   }
 
-  // ── Donut chart: respect exclTransf toggle ───────────────────────────
+  // ── Donut: usa profTipo quando filtro de professores está ativo ───────
   destroyChart('tipo-donut');
-  const TRANSF_KEY = 'Transferência s/ ônus';
-  let allLabels = Object.keys(DATA.tipoCount);
-  let allValues = Object.values(DATA.tipoCount);
-  let allColors = [...C.tipoColors];
-  if (filters.exclTransf) {
-    const idx = allLabels.indexOf(TRANSF_KEY);
-    if (idx !== -1) { allLabels.splice(idx, 1); allValues.splice(idx, 1); allColors.splice(idx, 1); }
+  let allLabels, allValues, allColors;
+  if (isProfOnly) {
+    allLabels = Object.keys(DATA.profTipo);
+    allValues = Object.values(DATA.profTipo);
+    allColors = [...C.tipoColors];
+    if (filters.exclTransf) {
+      const idx = allLabels.indexOf('Transferência');
+      if (idx !== -1) { allLabels.splice(idx,1); allValues.splice(idx,1); allColors.splice(idx,1); }
+    }
+  } else {
+    const TRANSF_KEY = 'Transferência s/ ônus';
+    allLabels = Object.keys(DATA.tipoCount);
+    allValues = Object.values(DATA.tipoCount);
+    allColors = [...C.tipoColors];
+    if (filters.exclTransf) {
+      const idx = allLabels.indexOf(TRANSF_KEY);
+      if (idx !== -1) { allLabels.splice(idx,1); allValues.splice(idx,1); allColors.splice(idx,1); }
+    }
   }
-  const grandTotal = allValues.reduce((a, b) => a + b, 0);
+
+  const grandTotal = allValues.reduce((a,b) => a + b, 0);
   const ctx = document.getElementById('chart-tipo-donut').getContext('2d');
   charts['tipo-donut'] = new Chart(ctx, {
     type: 'doughnut',
